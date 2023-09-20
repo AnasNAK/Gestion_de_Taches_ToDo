@@ -1,0 +1,1 @@
+void getLocalTime(struct tm *localTime);
