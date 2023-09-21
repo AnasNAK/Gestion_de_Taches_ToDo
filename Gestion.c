@@ -56,13 +56,17 @@ int readLastTaskID(const char *filename)
     FILE *file = fopen(filename, "r");
     if (file)
     {
-        char line[1024]; 
+        char line[1024];
         while (fgets(line, sizeof(line), file) != NULL)
         {
             int taskID;
-            if (sscanf(line, "Task ID: %d", &taskID) == 1)
+            char firstName[100], lastName[100], email[100], status[100];
+            int year, month, day;
+
+            if (sscanf(line, "%d %s %s %d %s %d %d %d %s %s %s",
+                       &taskID, firstName, lastName, &year, status, &year, &month, &day, firstName, lastName, email) == 11)
             {
-                // Found a Task ID in the file, update lastID
+                // Found a valid task line in the file, update lastID
                 lastID = taskID;
             }
         }
@@ -71,6 +75,80 @@ int readLastTaskID(const char *filename)
     return lastID;
 }
 
+int getStatusIndex(const char *statusToFind, const char *Status[], int numStatus)
+{
+    for (int i = 0; i < numStatus; i++)
+    {
+        if (strcmp(statusToFind, Status[i]) == 0)
+        {
+            return i;
+        }
+    }
+    // Return a default index (e.g., -1) to indicate not found or handle errors as needed.
+    return -1;
+}
+
+int readTaskCount(const char *filename)
+{
+    int taskCount = 0;
+    FILE *file = fopen(filename, "r");
+    if (file)
+    {
+        char line[1024];
+        while (fgets(line, sizeof(line), file) != NULL)
+        {
+            if (strstr(line, "****************************************") != NULL)
+            {
+                taskCount++;
+            }
+        }
+        fclose(file);
+    }
+    return taskCount;
+}
+
+void read_tasks_from_file(Task **tasks, int *numTasks, const char *filename)
+{
+    FILE *file = fopen(filename, "r");
+
+    if (file == NULL)
+    {
+        perror("Error opening file");
+        return;
+    }
+
+    char line[1024];
+
+    while (fgets(line, sizeof(line), file) != NULL)
+    {
+        Task task;
+        task.title = NULL;
+        task.description = NULL;
+        task.deadline = NULL;
+        task.collaboration = NULL;
+
+        int taskID, year, month, day;
+        char status[20], firstName[50], lastName[50], email[100];
+
+       if (sscanf(line, "%d %s %s %s %s %d %d %d %s %s %s",
+           &task.id, task.title, task.description, task.deadline, status,
+           &task.localTime.tm_year, &task.localTime.tm_mon, &task.localTime.tm_mday,
+           task.collaboration->first_name, task.collaboration->last_name, task.collaboration->email) == 11)
+        {
+
+
+            (*numTasks)++;
+            *tasks = (Task *)realloc(*tasks, (*numTasks) * sizeof(Task));
+            (*tasks)[(*numTasks) - 1] = task;
+        }
+        else
+        {
+            // Handle invalid data format if needed
+        }
+    }
+
+    fclose(file);
+}
 
 void save_to_file(Task *tasks, int numTasks, const char *filename)
 {
@@ -84,25 +162,23 @@ void save_to_file(Task *tasks, int numTasks, const char *filename)
 
     for (int i = 0; i < numTasks; i++)
     {
-        fprintf(file, "Task ID: %d\n", tasks[i].id);
-        fprintf(file, "Title: %s\n", tasks[i].title);
-        fprintf(file, "Description: %s\n", tasks[i].description);
-        fprintf(file, "Deadline: %s\n", tasks[i].deadline);
-        fprintf(file, "Status: %s\n", Status[tasks[i].StatusIndex]);
-        fprintf(file, "Creation Date: %d-%02d-%02d\n",
+        fprintf(file, "%d", tasks[i].id);
+        fprintf(file, " %s", tasks[i].title);
+        fprintf(file, " %s", tasks[i].description);
+        fprintf(file, " %s", tasks[i].deadline);
+        fprintf(file, " %s", Status[tasks[i].StatusIndex]);
+        fprintf(file, " %d %02d %02d",
                 tasks[i].localTime.tm_year + 1900,
                 tasks[i].localTime.tm_mon + 1,
                 tasks[i].localTime.tm_mday);
 
         if (tasks[i].collaboration != NULL)
         {
-            fprintf(file, "Collaborator: %s %s (%s)\n",
+            fprintf(file, " %s %s %s\n",
                     tasks[i].collaboration->first_name,
                     tasks[i].collaboration->last_name,
                     tasks[i].collaboration->email);
         }
-
-        fprintf(file, "****************************************\n");
     }
 
     fclose(file);
@@ -115,7 +191,6 @@ void add_task(Task **tasks, int *numTasks)
     *tasks = (Task *)realloc(*tasks, (*numTasks) * sizeof(Task));
     Task *task = &((*tasks)[(*numTasks) - 1]);
     task->id = ++lastTaskID;
-
     task->title = (char *)malloc(sizeof(char));
     task->description = (char *)malloc(sizeof(char));
     task->deadline = (char *)malloc(sizeof(char));
@@ -142,7 +217,6 @@ void add_task(Task **tasks, int *numTasks)
         scanf("%d", &statusChoice);
     } while (statusChoice < 1 || statusChoice > sizeof(Status) / sizeof(Status[0]));
 
-    // Set the status index, subtracting 1 to match the array index
     task->StatusIndex = statusChoice - 1;
 
     getLocalTime(&(task->localTime));
@@ -204,7 +278,6 @@ void Add_multiple_tasks()
 }
 void display_tasks(Task *tasks, int numTasks)
 {
-    printf("Displaying tasks...\n");
     for (int i = 0; i < numTasks; i++)
     {
         printf("Task %d:\n", i + 1);
@@ -214,8 +287,8 @@ void display_tasks(Task *tasks, int numTasks)
         printf("Deadline: %s\n", tasks[i].deadline);
         printf("Status: %s\n", Status[tasks[i].StatusIndex]);
         printf("Creation Date: %d-%02d-%02d\n",
-               tasks[i].localTime.tm_year + 1900,
-               tasks[i].localTime.tm_mon + 1,
+               tasks[i].localTime.tm_year,
+               tasks[i].localTime.tm_mon,
                tasks[i].localTime.tm_mday);
 
         if (tasks[i].collaboration != NULL)
@@ -290,27 +363,24 @@ void display_statistics(Task *task)
 int main()
 {
     const char *filename = "C:\\Users\\ANAS_NAK\\Desktop\\Gestion_de_Taches_ToDo\\dataSaS.txt";
-    int choice;
+    // const char *filename = "C:\\Users\\adm\\OneDrive\\Desktop\\Gestion_de_Taches_ToDo\\dataSaS.txt";
+    int choice, choice2, choice3, choice4, choice5;
     Task *tasks = NULL;
     int numTasks = 0;
-
     lastTaskID = readLastTaskID(filename);
 
     while (1)
     {
-        printf("\n\t\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~Menu~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
-        printf("\t\t\t\t\t1. Add a new task\n");
-        printf("\t\t\t\t\t2. Add multiple new tasks\n");
-        printf("\t\t\t\t\t3. Display the list of all tasks\n");
-        printf("\t\t\t\t\t4. Sort tasks in alphabetical order\n");
-        printf("\t\t\t\t\t5. Sort tasks by deadline\n");
-        printf("\t\t\t\t\t6. Display tasks with a deadline in 3 days or less\n");
-        printf("\t\t\t\t\t7. Modify a task\n");
-        printf("\t\t\t\t\t8. Delete a task by ID\n");
-        printf("\t\t\t\t\t9. Search for tasks\n");
-        printf("\t\t\t\t\t10. Statistics\n");
-        printf("\t\t\t\t\t11. Exit\n");
-        printf("\n\t\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~Menu~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+        printf("\n\t\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+        printf("\t\t\t\t\t\t\t1. Add a new task\n");
+        printf("\t\t\t\t\t\t\t2. Add multiple new tasks\n");
+        printf("\t\t\t\t\t\t\t3. Display all tasks\n");
+        printf("\t\t\t\t\t\t\t4. Modify a task\n");
+        printf("\t\t\t\t\t\t\t5. Delete a task \n");
+        printf("\t\t\t\t\t\t\t6. Search for task\n");
+        printf("\t\t\t\t\t\t\t7. Statistics\n");
+        printf("\t\t\t\t\t\t\t8. Exit\n");
+        printf("\n\t\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
         printf("Enter your choice: ");
         scanf("%d", &choice);
 
@@ -324,30 +394,117 @@ int main()
 
             break;
         case 3:
-            display_tasks(tasks, numTasks);
+
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of all tasks Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("\t\t\t\t\t1. Sort tasks by alphabetical order\n");
+            printf("\t\t\t\t\t2. Sort tasks by deadline\n");
+            printf("\t\t\t\t\t3. Display tasks with a deadline in 3 days or less\n");
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of all tasks Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("Enter your choice (1/2/3): ");
+            scanf("%d", &choice2);
+
+            switch (choice2)
+            {
+            case 1:
+
+                read_tasks_from_file(&tasks, &numTasks, filename);
+                display_tasks(tasks, numTasks);
+                break;
+            case 2:
+
+                printf("Enter your2");
+                break;
+            case 3:
+                printf("Enter your3");
+                break;
+            default:
+                printf("Invalid choice.\n");
+                break;
+            }
+
             break;
+
         case 4:
-            sort_tasks(tasks); // Pass tasks to the sort_tasks function
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of modifiying task Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("\t\t\t\t\t\t\t1. modify a task description\n");
+            printf("\t\t\t\t\t\t\t2. modify a task status\n");
+            printf("\t\t\t\t\t\t\t3. modify a task deadline\n");
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of modifiying task Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("Enter your choice (1/2/3): ");
+            scanf("%d", &choice3);
+
+            switch (choice3)
+            {
+            case 1:
+
+                printf("md1");
+                break;
+            case 2:
+
+                printf("md2");
+                break;
+            case 3:
+                printf("md3");
+                break;
+            default:
+                printf("Invalid choice.\n");
+                break;
+            }
             break;
         case 5:
-            sort_tasks_by_deadline(tasks); // Pass tasks to the sort_tasks_by_deadline function
+            delete_task(tasks);
             break;
         case 6:
-            display_near_deadline_tasks(tasks); // Pass tasks to the display_near_deadline_tasks function
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of search task Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("\t\t\t\t\t\t\t1. search for task by ID\n");
+            printf("\t\t\t\t\t\t\t2. search for task by title\n");
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ list of search task Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("Enter your choice (1/2): ");
+            scanf("%d", &choice4);
+
+            switch (choice4)
+            {
+            case 1:
+
+                printf("sch1");
+                break;
+            case 2:
+
+                printf("sch2");
+                break;
+            default:
+                printf("Invalid choice.\n");
+                break;
+            }
             break;
         case 7:
-            // Modify a task
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ statistic Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("\t\t\t\t\t1. total number of tasks\n");
+            printf("\t\t\t\t\t2. number of tasks complet and not complet\n");
+            printf("\t\t\t\t\t3. the number of days remaining until the deadline of each task\n");
+            printf("\n\t\t\t\t~~~~~~~~~~~~~~~~~~~~~~~~~~ statistic Menu ~~~~~~~~~~~~~~~~~~~~~~~~~~\n\n");
+            printf("Enter your choice (1/2/3): ");
+            scanf("%d", &choice5);
+
+            switch (choice5)
+            {
+            case 1:
+
+                printf("st1");
+                break;
+            case 2:
+
+                printf("st2");
+                break;
+            case 3:
+                printf("st3");
+                break;
+            default:
+                printf("Invalid choice.\n");
+                break;
+            }
             break;
         case 8:
-            delete_task(tasks); // Pass tasks to the delete_task function
-            break;
-        case 9:
-            // Search tasks
-            break;
-        case 10:
-            display_statistics(tasks); // Pass tasks to the display_statistics function
-            break;
-        case 11:
             printf("don't worry about all this is reserved on the database ");
             for (int i = 0; i < numTasks; i++)
             {
